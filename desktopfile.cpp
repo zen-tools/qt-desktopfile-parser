@@ -1,55 +1,58 @@
 #include "desktopfile.h"
 
-DesktopFile::DesktopFile(QString file)
+DesktopFile::DesktopFile( QString file, QObject *parent ) :
+    QObject( parent )
 {
-    QSettings settings(file, QSettings::IniFormat);
-    settings.setIniCodec("UTF-8");
+    QFile rfile( file, parent );
+    if( rfile.open( QIODevice::ReadOnly | QIODevice::Text ) ) {
+        QTextStream in( &rfile );
+        QString groupName = "";
 
-    // Build a list of keys that we need to read from file
-    key_list << Q_KEY_FILE_DESKTOP_KEY_NAME
-             << Q_KEY_FILE_DESKTOP_KEY_GENERIC_NAME
-             << Q_KEY_FILE_DESKTOP_KEY_CATEGORIES
-             << Q_KEY_FILE_DESKTOP_KEY_COMMENT
-             << Q_KEY_FILE_DESKTOP_KEY_ICON
-             << Q_KEY_FILE_DESKTOP_KEY_EXEC
-             << Q_KEY_FILE_DESKTOP_KEY_TERMINAL;
+        QRegExp entry_rx( "^\\[(.*)\\]$" );
+        QRegExp data_rx( "^([a-zA-Z]*(\\[\\S*\\])?)=(.*)" );
+        QRegExp skip_rx( "^$|^#.*" );
 
-    settings.beginGroup(Q_KEY_FILE_DESKTOP_GROUP);
-
-    foreach (QString key, key_list)
-    {
-        key = settings.contains(key + "[" + QLocale().name() + "]")
-            ? key + "[" + QLocale().name() + "]"
-            : settings.contains(key + "[" + QLocale().name().remove(QRegExp("_.*")) + "]")
-              ? key + "[" + QLocale().name().remove(QRegExp("_.*")) + "]"
-              : key;
-
-        QString value = settings.value(key, "").toString();
-
-        if(!value.isEmpty())
-            data.insert(key, value);
-
-        #ifdef QT_DEBUG
-            qWarning() << "[WARNING]"
-                + tr(" Cannot find data by key: '")
-                + key
-                + tr("' in file: ")
-                + file;
-        #endif
+        while( !in.atEnd() ) {
+            QString line = in.readLine().trimmed();
+            if( line.contains( entry_rx ) ) {
+                entry_rx.indexIn( line );
+                groupName = entry_rx.cap( 1 );
+                #ifdef QT_DEBUG
+                qDebug() << "[GROUP]" << groupName;
+                #endif
+                continue;
+            }
+            else if( !groupName.isEmpty() && line.contains( data_rx ) )
+            {
+                data_rx.indexIn( line );
+                values.insert( groupName + Q_GROUP_DELIMETR + data_rx.cap( 1 ), data_rx.cap( 3 ) );
+                #ifdef QT_DEBUG
+                qDebug() << "[DATA] " << data_rx.cap( 1 ) << values.value( groupName + Q_GROUP_DELIMETR + data_rx.cap( 1 ) );
+                #endif
+            }
+            else if( line.contains( skip_rx ) ) {
+                // Skip empty line or comment
+                continue;
+            }
+        }
     }
-
-    /*if (settings.) {
-        qWarning() << tr("Cannot find group: ")
-                   << Q_KEY_FILE_DESKTOP_GROUP
-                   << tr(" in file:")
-                   << this->file;
-        return;
-    }*/
-
-    settings.endGroup();
+    else {
+        qWarning() << "[WARN] " << "Cannot read file: " + file;
+    }
 }
 
-QString DesktopFile::value(QString key)
-{
-    return data.value(key, "");
+QString DesktopFile::value( QString key, QString defaultValue ) {
+    return values.value( this->currentGroup + Q_GROUP_DELIMETR + key, defaultValue );
+}
+
+QString DesktopFile::value( QString key, QStringList preferedLocales, QString defaultValue ) {
+    foreach( QString locale, preferedLocales ) {
+        QString value = values.value( this->currentGroup + Q_GROUP_DELIMETR + key + "[" + locale + "]" );
+        if( value.isEmpty() )
+            continue;
+        return value;
+    }
+
+    // I we have no one value by key + locale -> try to take from 'C' locale
+    return this->value( key, defaultValue );
 }

@@ -1,6 +1,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#define Q_DESKTOP_FILE_EXTENSION                "*.desktop"
+
 #define Q_KEY_FILE_DESKTOP_GROUP                "Desktop Entry"
 #define Q_KEY_FILE_DESKTOP_KEY_NAME             "Name"
 #define Q_KEY_FILE_DESKTOP_KEY_GENERIC_NAME     "GenericName"
